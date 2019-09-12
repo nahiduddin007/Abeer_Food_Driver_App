@@ -1,0 +1,11 @@
+<resources>
+    <string name="Driver_App">Driver App</string>
+    <string name="title_shop">Home</string>
+    <string name="title_gifts">Order</string>
+    <string name="title_cart">User</string>
+    <!-- TODO: Remove or change this placeholder text -->
+    <string name="hello_blank_fragment">Hello blank fragment</string>
+    <string name="title_activity_maps">Map</string>
+    <string name="google_directions_key">AIzaSyAT2UpwclPQpertYiNuLHrwt95cpuaM2w8</string>
+
+</resources>
