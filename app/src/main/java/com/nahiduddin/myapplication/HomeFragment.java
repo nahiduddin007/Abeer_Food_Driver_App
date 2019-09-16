@@ -15,12 +15,14 @@ import android.os.Bundle;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AlertDialog;
 import androidx.constraintlayout.widget.Constraints;
 import androidx.core.app.ActivityCompat;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
 
+import android.os.Handler;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -39,16 +41,23 @@ import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.MapView;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.maps.DirectionsApiRequest;
+import com.google.maps.GeoApiContext;
+import com.google.maps.PendingResult;
+import com.google.maps.model.DirectionsResult;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
+import static android.content.ContentValues.TAG;
 import static android.content.Context.LOCATION_SERVICE;
 
 
@@ -67,13 +76,25 @@ public  class HomeFragment extends Fragment implements OnMapReadyCallback,Google
     View mView;
     MapView mMapView;
 
+
+    private GeoApiContext geoApiContext = null;
+
     private Location location;
     private TextView latitudeTV, longitudeTV;
+    private Location mUserPosition;
     private Double LatitudeTV, LongitudeTV;
     private GoogleApiClient googleApiClient;
     private static final int PLAY_SERVICES_RESOLUTION_REQUEST = 9000;
+    private static final int MAP_LAYOUT_STATE_EXPANDED = 1;
     private LocationRequest locationRequest;
     private static final long UPDATE_INTERVAL = 5000, FASTEST_INTERVAL = 5000; // = 5 seconds
+
+
+    private Handler mHandler = new Handler();
+    private Runnable mRunnable;
+    private static final int LOCATION_UAPDATE_INTERVAL=3000;
+
+    private ArrayList<String> mUserLocations = new ArrayList<>();
     // lists for permissions
     private ArrayList<String> permissionsToRequest;
     private ArrayList<String> permissionsRejected = new ArrayList<>();
@@ -102,8 +123,7 @@ public  class HomeFragment extends Fragment implements OnMapReadyCallback,Google
         }
 
 
-        latitudeTV = mView.findViewById(R.id.latitudeTV);
-        longitudeTV = mView.findViewById(R.id.longitudeTV);
+
         // we add permissions we need to request location of the users
         permissions.add(Manifest.permission.ACCESS_FINE_LOCATION);
         permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION);
@@ -123,10 +143,19 @@ public  class HomeFragment extends Fragment implements OnMapReadyCallback,Google
                 addConnectionCallbacks(this).
                 addOnConnectionFailedListener(this).build();
 
-
+        //We build google ApiContext
+        if (geoApiContext==null)
+        {
+             geoApiContext = new GeoApiContext.Builder()
+                     .apiKey(getResources().getString(R.string.google_directions_key))
+                     .build();
+        }
         return mView;
 
     }
+
+
+
 
     private ArrayList<String> permissionsToRequest(ArrayList<String> wantedPermissions) {
         ArrayList<String> result = new ArrayList<>();
@@ -159,12 +188,6 @@ public  class HomeFragment extends Fragment implements OnMapReadyCallback,Google
         // Permissions ok, we get last location
         location = LocationServices.FusedLocationApi.getLastLocation(googleApiClient);
 
-        if (location != null) {
-            latitudeTV.setText("" +location.getLatitude());
-            longitudeTV.setText("" +location.getLongitude());
-
-            Log.e("Location: ", latitudeTV+" "+longitudeTV);
-        }
 
         startLocationUpdates();
     }
@@ -233,12 +256,6 @@ public  class HomeFragment extends Fragment implements OnMapReadyCallback,Google
     public void onLocationChanged(Location location) {
 
         ///Get Longitude and Latitude Value
-        if (location != null) {
-            latitudeTV.setText("" +location.getLatitude());
-            longitudeTV.setText("" +location.getLongitude());
-            Log.e("Location: ", latitudeTV+" "+longitudeTV);
-
-        }
 
         if (location != null) {
             LatitudeTV = location.getLatitude();
@@ -250,11 +267,15 @@ public  class HomeFragment extends Fragment implements OnMapReadyCallback,Google
             LatLng mylocation = new LatLng(LatitudeTV, LongitudeTV);
 
             CameraPosition position= new  CameraPosition.Builder().
-                    target(mylocation).zoom(17).bearing(19).tilt(30).build();
+                    target(mylocation).zoom(15).bearing(19).tilt(30).build();
 
             mMap.animateCamera(CameraUpdateFactory.newCameraPosition(position));
-            mMap.addMarker(new MarkerOptions().position(mylocation).title("My Location"));
-
+            mMap.addMarker(new MarkerOptions()
+                    .position(mylocation)
+                    .title("My location")
+                    .icon(BitmapDescriptorFactory.fromResource(R.drawable.food_delivery)));
+            mMap.getUiSettings().setZoomControlsEnabled(true);
+            mMap.setMyLocationEnabled(true);
         }
 
 
@@ -262,7 +283,7 @@ public  class HomeFragment extends Fragment implements OnMapReadyCallback,Google
 
         Geocoder geocoder;
         List<Address> addresses;
-        address = mView.findViewById(R.id.Address);
+        //address = mView.findViewById(R.id.Address);
 
         geocoder = new Geocoder(getActivity(), Locale.getDefault());
 
@@ -274,7 +295,7 @@ public  class HomeFragment extends Fragment implements OnMapReadyCallback,Google
             String country = addresses.get(0).getCountryName();
             String postalCode = addresses.get(0).getPostalCode();
 
-           address.setText(add);
+          // address.setText(add);
 
 
 
@@ -286,6 +307,11 @@ public  class HomeFragment extends Fragment implements OnMapReadyCallback,Google
 
         }
 
+
+
+
+
+
     }
 
 
@@ -293,39 +319,38 @@ public  class HomeFragment extends Fragment implements OnMapReadyCallback,Google
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        switch (requestCode) {
-            case ALL_PERMISSIONS_RESULT:
-                for (String perm : permissionsToRequest) {
-                    if (!hasPermission(perm)) {
-                        permissionsRejected.add(perm);
+        if (requestCode == ALL_PERMISSIONS_RESULT) {
+            for (String perm : permissionsToRequest) {
+                if (!hasPermission(perm)) {
+                    permissionsRejected.add(perm);
+                }
+            }
+
+            if (permissionsRejected.size() > 0) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    if (shouldShowRequestPermissionRationale(permissionsRejected.get(0))) {
+                        new AlertDialog.Builder(Objects.requireNonNull(getActivity())).
+                                setMessage("These permissions are mandatory to get your location. You need to allow them.").
+                                setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                                    @Override
+                                    public void onClick(DialogInterface dialogInterface, int i) {
+                                        requestPermissions(permissionsRejected.
+                                                toArray(new String[0]), ALL_PERMISSIONS_RESULT);
+                                    }
+                                }).setNegativeButton("Cancel", null).create().show();
+
                     }
                 }
+            }
 
-                if (permissionsRejected.size() > 0) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        if (shouldShowRequestPermissionRationale(permissionsRejected.get(0))) {
-                            new AlertDialog.Builder(getActivity()).
-                                    setMessage("These permissions are mandatory to get your location. You need to allow them.").
-                                    setPositiveButton("OK", new DialogInterface.OnClickListener() {
-                                        @Override
-                                        public void onClick(DialogInterface dialogInterface, int i) {
-                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                                                requestPermissions(permissionsRejected.
-                                                        toArray(new String[permissionsRejected.size()]), ALL_PERMISSIONS_RESULT);
-                                            }
-                                        }
-                                    }).setNegativeButton("Cancel", null).create().show();
 
-                            return;
-                        }
-                    }
-                } else {
+            else
+                {
+
                     if (googleApiClient != null) {
-                        googleApiClient.connect();
-                    }
+                    googleApiClient.connect();
                 }
-
-                break;
+            }
         }
 
 
@@ -341,6 +366,7 @@ public  class HomeFragment extends Fragment implements OnMapReadyCallback,Google
 
     ////////////////////////////////////////////////////////////////////
 
+    @RequiresApi(api = Build.VERSION_CODES.KITKAT)
     private  boolean checkPlayServices() {
                 GoogleApiAvailability apiAvailability = GoogleApiAvailability.getInstance();
                 int resultCode = apiAvailability.isGooglePlayServicesAvailable(getActivity());
@@ -349,7 +375,7 @@ public  class HomeFragment extends Fragment implements OnMapReadyCallback,Google
                     if (apiAvailability.isUserResolvableError(resultCode)) {
                         apiAvailability.getErrorDialog(getActivity(), resultCode, PLAY_SERVICES_RESOLUTION_REQUEST);
                     } else {
-                        getActivity().finish();
+                        Objects.requireNonNull(getActivity()).finish();
                     }
 
                     return false;
@@ -363,15 +389,7 @@ public  class HomeFragment extends Fragment implements OnMapReadyCallback,Google
     @Override
     public void onMapReady(GoogleMap googleMap) {
         mMap = googleMap;
-        // Add a marker in Sydney and move the camera
-//        LatLng mylocation = new LatLng(23.747520, 90.390034);
-//        mMap.addMarker(new MarkerOptions().position(mylocation).title("My Location"));
-//
-//
-//        mMap.moveCamera(CameraUpdateFactory.newLatLng(mylocation));
-//
-//        latitudeTV.setText(""+ mylocation.latitude);
-//        longitudeTV.setText(""+mylocation.longitude);
+
 
     }
 }

@@ -1,5 +1,5 @@
 <resources>
-    <string name="Driver_App">Driver App</string>
+    <string name="Driver_App">Home</string>
     <string name="title_shop">Home</string>
     <string name="title_gifts">Order</string>
     <string name="title_cart">User</string>
