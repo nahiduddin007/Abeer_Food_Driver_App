@@ -229,6 +229,7 @@ public  class HomeFragment extends Fragment implements OnMapReadyCallback,Google
         }
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.KITKAT)
     @Override
     public void onResume() {
         super.onResume();
